@@ -1,0 +1,21 @@
+{
+  "name": "yaadrakshak-backend",
+  "version": "1.0.0",
+  "description": "YaadRakshak secure backend API for Groq AI proxy, YouPI PG payments & webhooks, server-side entitlements, and Admin RBAC.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/backend.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^13.1.0",
+    "helmet": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

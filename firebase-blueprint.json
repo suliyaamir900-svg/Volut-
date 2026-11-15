@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated Firebase user account, RBAC role, and server-verified quota metadata. Personal vault data remains strictly local in Room.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "Verified account email" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "photoUrl": { "type": "string", "description": "Avatar URL" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "RBAC role" },
+        "subscriptionTier": { "type": "string", "description": "Server-managed subscription plan ID" },
+        "adFree": { "type": "boolean", "description": "Server/Admin-managed ads-block entitlement" },
+        "aiCreditsRemaining": { "type": "integer", "description": "Remaining AI credits" },
+        "storageUsedBytes": { "type": "integer", "description": "Local vault size telemetry" },
+        "storageLimitBytes": { "type": "integer", "description": "Allowed limit bytes" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": ["userId", "displayName", "role", "subscriptionTier", "createdAt"]
+    },
+    "SubscriptionPlan": {
+      "title": "SubscriptionPlan",
+      "description": "Admin-managed subscription plan pricing and limits.",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string" },
+        "name": { "type": "string" },
+        "priceInr": { "type": "integer" },
+        "interval": { "type": "string" },
+        "aiMonthlyCredits": { "type": "integer" },
+        "storageLimitMb": { "type": "integer" },
+        "adFree": { "type": "boolean" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["planId", "name", "priceInr", "interval", "aiMonthlyCredits", "storageLimitMb", "adFree", "active"]
+    },
+    "SubscriptionEntitlement": {
+      "title": "SubscriptionEntitlement",
+      "description": "Server-verified user subscription state.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "planId": { "type": "string" },
+        "status": { "type": "string" },
+        "expiresAtMillis": { "type": "integer" },
+        "verifiedByServer": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planId", "status", "verifiedByServer"]
+    },
+    "PaymentOrderRecord": {
+      "title": "PaymentOrderRecord",
+      "description": "Server-created YouPI PG payment order.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "planId": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "currency": { "type": "string" },
+        "status": { "type": "string" },
+        "youpiPaymentId": { "type": "string" },
+        "checkoutUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planId", "amountPaise", "currency", "status"]
+    },
+    "PaymentTransactionRecord": {
+      "title": "PaymentTransactionRecord",
+      "description": "Verified YouPI PG webhook transaction record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "gatewayEvent": { "type": "string" },
+        "settlementState": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "utrReference": { "type": "string" },
+        "verifiedSignature": { "type": "boolean" },
+        "processedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "orderId", "gatewayEvent", "amountPaise", "verifiedSignature"]
+    },
+    "AuditLogRecord": {
+      "title": "AuditLogRecord",
+      "description": "Admin-only system, AI, and payment audit log entry.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "status": { "type": "string" },
+        "detail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "action", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated user identity and role metadata (personal vault stays local in Room)."
+    },
+    "/users/{userId}/subscriptions/{subscriptionId}": {
+      "schema": { "$ref": "#/entities/SubscriptionEntitlement" },
+      "description": "Server-verified subscription entitlements (read-only for owner)."
+    },
+    "/users/{userId}/payment_orders/{orderId}": {
+      "schema": { "$ref": "#/entities/PaymentOrderRecord" },
+      "description": "Server-created YouPI PG payment orders (read-only for owner)."
+    },
+    "/users/{userId}/payment_transactions/{txId}": {
+      "schema": { "$ref": "#/entities/PaymentTransactionRecord" },
+      "description": "Verified YouPI PG transactions (read-only for owner)."
+    },
+    "/plans/{planId}": {
+      "schema": { "$ref": "#/entities/SubscriptionPlan" },
+      "description": "Subscription plan catalog managed by admins."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLogRecord" },
+      "description": "Admin-only system, AI, and payment audit logs."
+    }
+  }
+}

@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny everything by default (including any local-only vault subcollections
+    // such as memories, reminders, warranties, receipts, expenses, contacts, and backups).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          'email_verified' in request.auth.token &&
+          request.auth.token.email_verified == true &&
+          'email' in request.auth.token &&
+          request.auth.token.email == 'suliyaamir900@gmail.com'
+        )
+      );
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 200)) &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             data.role in ['user', 'admin'] &&
+             data.subscriptionTier is string && data.subscriptionTier.size() >= 1 && data.subscriptionTier.size() <= 64 &&
+             (!('adFree' in data) || data.adFree is bool) &&
+             (!('aiCreditsRemaining' in data) || (data.aiCreditsRemaining is int && data.aiCreditsRemaining >= 0)) &&
+             (!('storageUsedBytes' in data) || (data.storageUsedBytes is int && data.storageUsedBytes >= 0)) &&
+             (!('storageLimitBytes' in data) || (data.storageLimitBytes is int && data.storageLimitBytes >= 0));
+    }
+
+    function isValidPlan(data) {
+      return data.planId is string && data.planId.size() >= 1 && data.planId.size() <= 64 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.priceInr is int && data.priceInr >= 0 &&
+             data.interval in ['free', 'weekly', 'monthly', 'quarterly', 'yearly', 'custom'] &&
+             data.aiMonthlyCredits is int && data.aiMonthlyCredits >= 0 &&
+             data.storageLimitMb is int && data.storageLimitMb >= 0 &&
+             data.adFree is bool &&
+             data.active is bool;
+    }
+
+    // Users collection: Authentication identity, role, and server-verified tier/adFree quota only.
+    // All personal vault records remain strictly local on-device in Room.
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'role', 'subscriptionTier', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'photoUrl', 'role', 'subscriptionTier', 'adFree', 'aiCreditsRemaining', 'storageUsedBytes', 'storageLimitBytes', 'createdAt', 'updatedAt']) &&
+                       (incoming().role == 'user' || (isAdmin() && incoming().role == 'admin')) &&
+                       incoming().subscriptionTier == 'free' &&
+                       (!('adFree' in incoming()) || incoming().adFree == false || isAdmin()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       (!('updatedAt' in incoming()) || isValidTimestamp(incoming().updatedAt)) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isValidId(userId) &&
+                       isValidUserProfile(incoming(), userId) && (
+                         isAdmin() || (
+                           isOwner(userId) &&
+                           incoming().userId == existing().userId &&
+                           incoming().createdAt == existing().createdAt &&
+                           incoming().role == existing().role &&
+                           incoming().subscriptionTier == existing().subscriptionTier &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoUrl', 'updatedAt']) &&
+                           isValidTimestamp(incoming().updatedAt)
+                         )
+                       );
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // Server-controlled billing & entitlements (NEVER writable by non-admin client!)
+      match /subscriptions/{subscriptionId} {
+        allow get: if isValidId(userId) && isValidId(subscriptionId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow write: if isAdmin();
+      }
+
+      match /payment_orders/{orderId} {
+        allow get: if isValidId(userId) && isValidId(orderId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow write: if isAdmin();
+      }
+
+      match /payment_transactions/{txId} {
+        allow get: if isValidId(userId) && isValidId(txId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow write: if isAdmin();
+      }
+    }
+
+    // Subscription plans: readable by signed-in users, writable only by admins
+    match /plans/{planId} {
+      allow get: if isValidId(planId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isValidId(planId) && isAdmin() && isValidPlan(incoming());
+      allow delete: if isValidId(planId) && isAdmin();
+    }
+
+    // Public non-secret payment display info (merchant UPI VPA, payee name, bank name/IFSC)
+    match /app_config/payments_public {
+      allow get: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Secret server-only config (Groq API key, YouPI merchant API key & webhook secret)
+    match /app_config/{configId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Admin registry, order index & system audit logs
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && (isOwner(adminUid) || isAdmin());
+      allow list, write: if isAdmin();
+    }
+
+    match /order_lookup/{orderId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

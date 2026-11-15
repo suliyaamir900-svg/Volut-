@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="saffron_primary">#FFEA580C</color>
+    <color name="tangerine_vibrant">#FFF97316</color>
+    <color name="deep_terracotta">#FFC2410C</color>
+    <color name="soft_apricot">#FFFFF7ED</color>
+    <color name="warm_ivory">#FFFFFBF5</color>
+    <color name="black">#FF0F172A</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
